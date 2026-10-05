@@ -18,11 +18,26 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: ai-news-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   app:
     build: .
     container_name: ai-news-app
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -30,8 +45,27 @@ services:
       - .env
     environment:
       DB_HOST: db
+      REDIS_HOST: redis
+    volumes:
+      - ./logs:/app/logs
+
+  worker:
+    build: .
+    container_name: ai-news-worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+    command: ["arq", "app.core.worker.WorkerSettings"]
     volumes:
       - ./logs:/app/logs
 
 volumes:
   postgres_data:
+  redis_data:

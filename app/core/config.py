@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     FRONTEND_CORS_ORIGINS: str = "http://localhost:3000"
     SECRET_ENCRYPTION_KEY: str | None = None
 
+    # Redis & Task Queue
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: str | None = None
+    REDIS_DB: int = 0
+
     @property
     def is_development(self) -> bool:
         return self.APP_ENV == "development"
@@ -32,6 +38,12 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.FRONTEND_CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def redis_url(self) -> str:
+        if self.REDIS_PASSWORD:
+            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
