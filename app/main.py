@@ -1,3 +1,4 @@
+import os
 import time
 from contextlib import asynccontextmanager
 from cryptography.fernet import Fernet
@@ -6,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.inmemory import InMemoryBackend
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.log import logger, setup_logging
@@ -77,6 +79,11 @@ def healthz() -> dict[str, str]:
 
 # Mount API Routers
 app.include_router(api_v1_router, prefix="/api/v1")
+
+# Mount Static Media Directory in Development
+if settings.STORAGE_PROVIDER == "local":
+    os.makedirs(settings.STORAGE_LOCAL_DIR, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=settings.STORAGE_LOCAL_DIR), name="media")
 
 # Mount Starlette Admin
 setup_admin(app)

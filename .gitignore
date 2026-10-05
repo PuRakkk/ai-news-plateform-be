@@ -36,9 +36,10 @@ env/
 .env.local
 .env.*.local
 
-# Logs
+# Logs & Media
 logs/
 *.log
+media/
 
 # Pytest & Coverage
 .pytest_cache/
