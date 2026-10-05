@@ -1,0 +1,35 @@
+[project]
+name = "ai-news-backend"
+version = "0.1.0"
+description = "AI News Automation Platform Backend with FastAPI, SQLModel, and Alembic"
+requires-python = ">=3.11"
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlmodel>=0.0.22",
+    "alembic>=1.13.0",
+    "psycopg2-binary>=2.9.9",
+    "pydantic-settings>=2.12.0",
+    "starlette-admin==0.16.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt<4.1",
+    "pyjwt>=2.12.1",
+    "cryptography>=46.0.3",
+    "httpx>=0.28.1",
+    "email-validator>=2.3.0",
+    "fastapi-cache2>=0.2.2",
+    "cachetools>=7.1.7",
+    "pytest>=9.0.0",
+    "python-dotenv>=1.0.0",
+    "itsdangerous>=2.2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
