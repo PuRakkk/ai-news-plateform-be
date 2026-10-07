@@ -78,3 +78,14 @@ def test_ssrf_url_validation():
 
     # Valid public URL format should pass (if domain resolves)
     assert validate_outbound_url("https://example.com/webhook") is True
+
+
+def test_worker_status_endpoint(client: TestClient):
+    response = client.get("/api/v1/worker/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "is_running" in data
+    assert "scheduler_enabled" in data
+    assert "cron_schedule" in data
+    assert "redis_endpoint" in data
+

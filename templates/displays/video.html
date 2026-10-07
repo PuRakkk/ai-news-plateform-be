@@ -1,0 +1,20 @@
+{% if data %}
+<div class="my-2" style="max-width: 360px;">
+    <video
+        src="{{ data }}"
+        controls
+        playsinline
+        preload="metadata"
+        style="width: 100%; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.15); background-color: #000;"
+    >
+        Your browser does not support HTML5 video.
+    </video>
+    <div class="mt-2">
+        <a href="{{ data }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">
+            Open Video in New Tab
+        </a>
+    </div>
+</div>
+{% else %}
+    <span class="text-muted">-No video available-</span>
+{% endif %}

@@ -1,33 +1,36 @@
 """Data access repositories."""
-from typing import Generic, TypeVar, Type, Optional, Sequence
-from sqlmodel import Session, select
+from app.repositories.base import BaseRepository
+from app.repositories.client_repo import (
+    ClientBrandKitRepository,
+    ClientPersonaRepository,
+    ClientProfileRepository,
+    ClientTopicFilterRepository,
+)
+from app.repositories.media_repo import RenderedVideoRepository
+from app.repositories.news_repo import (
+    ArticleRepository,
+    ArticleScoreRepository,
+    ArticleVerificationRepository,
+    NewsSourceRepository,
+)
+from app.repositories.script_repo import (
+    ScriptBeatRepository,
+    ScriptClaimAuditRepository,
+    ScriptRepository,
+)
 
-ModelType = TypeVar("ModelType")
-
-
-class BaseRepository(Generic[ModelType]):
-    """Base generic repository for SQLModel operations."""
-
-    def __init__(self, model: Type[ModelType], session: Session) -> None:
-        self.model = model
-        self.session = session
-
-    def get_by_id(self, id: int | str) -> Optional[ModelType]:
-        return self.session.get(self.model, id)
-
-    def get_all(self, skip: int = 0, limit: int = 100) -> Sequence[ModelType]:
-        statement = select(self.model).offset(skip).limit(limit)
-        return self.session.exec(statement).all()
-
-    def create(self, obj: ModelType) -> ModelType:
-        self.session.add(obj)
-        self.session.commit()
-        self.session.refresh(obj)
-        return obj
-
-    def delete(self, obj: ModelType) -> None:
-        self.session.delete(obj)
-        self.session.commit()
-
-
-__all__ = ["BaseRepository"]
+__all__ = [
+    "BaseRepository",
+    "NewsSourceRepository",
+    "ArticleRepository",
+    "ArticleVerificationRepository",
+    "ArticleScoreRepository",
+    "ClientProfileRepository",
+    "ClientPersonaRepository",
+    "ClientTopicFilterRepository",
+    "ClientBrandKitRepository",
+    "ScriptRepository",
+    "ScriptBeatRepository",
+    "ScriptClaimAuditRepository",
+    "RenderedVideoRepository",
+]

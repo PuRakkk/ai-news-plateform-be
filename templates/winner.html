@@ -1,0 +1,246 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container-xl">
+    <!-- Page Header -->
+    <div class="page-header d-print-none mb-4">
+        <div class="row align-items-center">
+            <div class="col">
+                <div class="page-pretitle">
+                    <span class="badge bg-warning text-dark me-1">
+                        <i class="fa fa-trophy me-1"></i> Stage 4 Production Pick
+                    </span>
+                    AI News Automation
+                </div>
+                <h2 class="page-title mt-1">
+                    Daily Elected Winner
+                </h2>
+            </div>
+            <div class="col-auto ms-auto d-print-none">
+                <div class="btn-list">
+                    {% if article and article.url %}
+                    <a href="{{ article.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">
+                        <i class="fa fa-external-link-alt me-1"></i> Original Article
+                    </a>
+                    {% endif %}
+                    <a href="{{ request.scope.root_path }}/article/list" class="btn btn-secondary">
+                        <i class="fa fa-list me-1"></i> All Articles
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if active_clients and active_clients | length > 0 %}
+    <!-- Client Selection Filter -->
+    <div class="card mb-3 p-2 bg-light-lt border">
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <span class="text-muted small fw-bold me-2"><i class="fa fa-building me-1"></i> Client Mandate:</span>
+            <a href="{{ request.scope.root_path }}/winner" class="btn btn-sm {% if not selected_client_id %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                All / Top Global
+            </a>
+            {% for cl in active_clients %}
+            <a href="{{ request.scope.root_path }}/winner?client_id={{ cl.id }}" class="btn btn-sm {% if selected_client_id == (cl.id | string) %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                {{ cl.name }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not article %}
+    <!-- Empty State -->
+    <div class="card card-md">
+        <div class="card-body text-center py-5">
+            <div class="avatar avatar-xl rounded-circle bg-yellow-lt mx-auto mb-3">
+                <i class="fa fa-trophy fa-2x text-warning"></i>
+            </div>
+            <h3>No Winner Elected Yet</h3>
+            <p class="text-muted max-w-md mx-auto">
+                No article currently has status <code>selected</code>. Run the news ingestion pipeline via CLI (<code>make ingest</code>) or trigger the daily schedule to elect today's winning story.
+            </p>
+            <div class="mt-4">
+                <a href="{{ request.scope.root_path }}/article/list" class="btn btn-primary">
+                    <i class="fa fa-newspaper me-1"></i> Browse Ingested Articles
+                </a>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Winner Details -->
+    <div class="row row-cards">
+        <!-- Main Article Overview -->
+        <div class="col-12">
+            <div class="card border-primary">
+                <div class="card-status-top bg-primary"></div>
+                <div class="card-header bg-light-lt">
+                    <div class="d-flex align-items-center w-100 justify-content-between">
+                        <div>
+                            <span class="badge bg-success text-white me-2">STATUS: {{ article.status | upper }}</span>
+                            {% if source %}
+                            <span class="badge bg-blue-lt me-2"><i class="fa fa-rss me-1"></i> {{ source.name }}</span>
+                            {% endif %}
+                            {% if article.published_at %}
+                            <span class="text-muted small">
+                                <i class="fa fa-clock me-1"></i> Published: {{ article.published_at.strftime('%Y-%m-%d %H:%M UTC') }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <span class="badge bg-dark text-white">
+                                <i class="fa fa-file-alt me-1"></i> {{ (article.full_text or '') | length }} characters
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <h1 class="card-title h1 text-primary mb-3">{{ article.title }}</h1>
+                    {% if article.summary %}
+                    <p class="text-muted lead mb-0">{{ article.summary }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Scores & Verification Cards -->
+        <div class="col-md-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-chart-bar text-primary me-2"></i> Executive Utility Scoring (Stage 4)
+                    </h3>
+                    {% if score %}
+                    <div class="card-actions">
+                        <span class="badge bg-primary text-white fs-6">
+                            Score: {{ "%.2f" | format(score.composite_score) }} / 1.00
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if not score %}
+                    <p class="text-muted">No score record found for this article.</p>
+                    {% else %}
+                    <div class="row g-3 mb-4">
+                        <div class="col-6">
+                            <div class="border rounded p-3 text-center bg-light-lt">
+                                <div class="text-muted small text-uppercase fw-bold">Actionability (40%)</div>
+                                <div class="h2 text-success mb-1">{{ "%.2f" | format(score.actionability) }}</div>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar bg-success" style="width: {{ score.actionability * 100 }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-3 text-center bg-light-lt">
+                                <div class="text-muted small text-uppercase fw-bold">Economic Impact (30%)</div>
+                                <div class="h2 text-info mb-1">{{ "%.2f" | format(score.economic_impact) }}</div>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar bg-info" style="width: {{ score.economic_impact * 100 }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-3 text-center bg-light-lt">
+                                <div class="text-muted small text-uppercase fw-bold">Regulatory Impact (20%)</div>
+                                <div class="h2 text-warning mb-1">{{ "%.2f" | format(score.regulatory_impact) }}</div>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar bg-warning" style="width: {{ score.regulatory_impact * 100 }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-3 text-center bg-light-lt">
+                                <div class="text-muted small text-uppercase fw-bold">Technical Novelty (10%)</div>
+                                <div class="h2 text-purple mb-1">{{ "%.2f" | format(score.novelty) }}</div>
+                                <div class="progress progress-sm">
+                                    <div class="progress-bar bg-purple" style="width: {{ score.novelty * 100 }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if score.reasoning %}
+                    <div class="alert alert-info bg-info-lt border-0 mb-0">
+                        <h4 class="alert-title"><i class="fa fa-lightbulb me-1"></i> Editorial Scoring Rationale</h4>
+                        <div class="text-secondary">{{ score.reasoning }}</div>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-check-double text-teal me-2"></i> Dual-Source Corroboration (Stage 3)
+                    </h3>
+                </div>
+                <div class="card-body">
+                    {% if not verification %}
+                    <p class="text-muted">No cross-source verification record available.</p>
+                    {% else %}
+                    <div class="mb-3">
+                        <div class="text-muted small">Verification Status</div>
+                        {% if verification.is_verified %}
+                        <span class="badge bg-teal text-white fs-6 mt-1">
+                            <i class="fa fa-check me-1"></i> DUAL-SOURCE VERIFIED (Agreement: {{ "%.2f" | format(verification.agreement_score) }})
+                        </span>
+                        {% else %}
+                        <span class="badge bg-secondary text-white fs-6 mt-1">
+                            <i class="fa fa-info-circle me-1"></i> SINGLE SOURCE (Agreement: {{ "%.2f" | format(verification.agreement_score) }})
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    {% if verification.secondary_source or verification.secondary_url %}
+                    <div class="mb-3">
+                        <div class="text-muted small">Corroborating Outlet</div>
+                        <div class="fw-bold mt-1">
+                            <i class="fa fa-globe text-muted me-1"></i> {{ verification.secondary_source or 'External Source' }}
+                        </div>
+                        {% if verification.secondary_url %}
+                        <a href="{{ verification.secondary_url }}" target="_blank" rel="noopener noreferrer" class="small text-truncate d-block mt-1">
+                            {{ verification.secondary_url }}
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    {% if verification.corroboration_notes %}
+                    <div class="alert alert-secondary mb-0">
+                        <div class="text-muted small mb-1 fw-bold">Audit Notes</div>
+                        <div class="small">{{ verification.corroboration_notes }}</div>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Full Extracted Article Body -->
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fa fa-align-left text-primary me-2"></i> Full Extracted Article Text
+                    </h3>
+                    <div class="card-actions">
+                        <span class="badge bg-secondary text-white">Clean Text Body</span>
+                    </div>
+                </div>
+                <div class="card-body p-4" style="background-color: #fcfcfc;">
+                    {% if not article.full_text %}
+                    <p class="text-muted italic">No full text extracted for this article.</p>
+                    {% else %}
+                    <div class="article-content" style="font-size: 1.05rem; line-height: 1.8; color: #1e293b; max-width: 900px; margin: 0 auto; white-space: pre-wrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">{{ article.full_text }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

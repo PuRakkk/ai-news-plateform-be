@@ -39,7 +39,7 @@ env/
 # Logs & Media
 logs/
 *.log
-media/
+/media/
 
 # Pytest & Coverage
 .pytest_cache/
@@ -59,3 +59,4 @@ htmlcov/
 .DS_Store
 Thumbs.db
 /PLAN_LOCAL/
+setup.md

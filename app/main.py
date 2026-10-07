@@ -31,7 +31,17 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             raise ValueError(f"Invalid SECRET_ENCRYPTION_KEY Fernet format: {exc}") from exc
 
+    # Initialize in-process ARQ background worker & cron scheduler
+    if settings.WORKER_EMBEDDED_ENABLED and not os.getenv("PYTEST_CURRENT_TEST"):
+        from app.core.worker import embedded_worker_manager
+        await embedded_worker_manager.start()
+
     yield
+
+    # Shutdown in-process ARQ background worker
+    if settings.WORKER_EMBEDDED_ENABLED and not os.getenv("PYTEST_CURRENT_TEST"):
+        from app.core.worker import embedded_worker_manager
+        await embedded_worker_manager.stop()
 
     logger.info("Shutting down AI News Platform Backend...")
 

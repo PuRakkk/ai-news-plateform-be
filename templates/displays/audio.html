@@ -1,0 +1,14 @@
+{% if data %}
+<div class="my-2" style="max-width: 360px;">
+    <audio controls src="{{ data }}" style="width: 100%;">
+        Your browser does not support HTML5 audio.
+    </audio>
+    <div class="mt-1">
+        <a href="{{ data }}" target="_blank" rel="noopener noreferrer" class="text-muted small">
+            Open Audio in New Tab
+        </a>
+    </div>
+</div>
+{% else %}
+    <span class="text-muted">-No audio available-</span>
+{% endif %}

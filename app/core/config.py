@@ -36,13 +36,22 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = True
     SCHEDULER_CRON_HOUR: int = 7
     SCHEDULER_CRON_MINUTE: int = 0
+    SCHEDULER_RUN_ON_STARTUP: bool = False
+    WORKER_EMBEDDED_ENABLED: bool = True
+
+    # Ingestion Freshness & Limits
+    RSS_MAX_ENTRIES_PER_FEED: int = 25
+    RSS_MAX_AGE_DAYS: int = 3
+    RSS_ONLY_YESTERDAY_AND_TODAY: bool = True
+    RSS_TODAY_FRESHNESS_BONUS: float = 0.05
+    INGESTION_TOP_K: int = 10
 
     # LLM Provider Configuration (gemini | openai)
-    LLM_PROVIDER: Literal["gemini", "openai"] = "gemini"
+    LLM_PROVIDER: Literal["gemini", "openai"] = "openai"
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENAI_API_KEY: str | None = None
-    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
     # Media Storage Configuration (local | s3 | r2)
     STORAGE_PROVIDER: Literal["local", "s3", "r2"] = "local"
@@ -55,7 +64,9 @@ class Settings(BaseSettings):
     S3_PUBLIC_BASE_URL: str | None = None
 
     # Video & Voice Engine (mock | programmatic | heygen | did)
-    VIDEO_ENGINE: Literal["mock", "programmatic", "heygen", "did"] = "mock"
+    VIDEO_ENGINE: Literal["mock", "programmatic", "heygen", "did"] = "programmatic"
+    TTS_PROVIDER: Literal["mock", "edge_tts", "elevenlabs"] = "edge_tts"
+    TTS_DEFAULT_VOICE: str = "en-US-ChristopherNeural"
     HEYGEN_API_KEY: str | None = None
     ELEVENLABS_API_KEY: str | None = None
 

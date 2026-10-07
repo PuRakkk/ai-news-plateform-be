@@ -21,6 +21,12 @@ def setup_logging() -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     # Avoid duplicate handlers if already added
     if not root_logger.handlers:
         # Console Handler

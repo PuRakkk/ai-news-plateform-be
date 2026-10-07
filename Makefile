@@ -1,4 +1,4 @@
-.PHONY: run test migrate revision infra-up infra-down infra-logs worker
+.PHONY: run test migrate revision infra-up infra-down infra-logs worker ingest
 
 # Infrastructure (PostgreSQL & Redis in Docker)
 infra-up:
@@ -25,3 +25,6 @@ migrate:
 
 revision:
 	uv run alembic revision --autogenerate -m "$(name)"
+
+ingest:
+	uv run python -m app.services.ingestion.runner
