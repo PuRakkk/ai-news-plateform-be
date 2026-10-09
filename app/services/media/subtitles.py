@@ -21,28 +21,39 @@ def sec_to_ass_time(sec: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
+from app.core.config import settings
+
+
 def generate_ass_subtitles(
     cues: list[TTSCue],
     font_family: str = "Arial",
     highlight_hex: str = "#10B981",
     primary_hex: str = "#FFFFFF",
     output_path: Path | str | None = None,
+    aspect_ratio: str | None = None,
 ) -> str:
     """Generate high-retention ASS subtitle file with kinetic word-by-word karaoke popping."""
     ass_highlight = hex_to_ass_color(highlight_hex)
     ass_primary = hex_to_ass_color(primary_hex)
 
-    # 1080x1920 mobile viewport, centered in safe lower-third retention zone (MarginV: 390)
+    target_ratio = aspect_ratio or getattr(settings, "VIDEO_ASPECT_RATIO", "16:9")
+    is_landscape = target_ratio == "16:9"
+
+    play_res_x = 1920 if is_landscape else 1080
+    play_res_y = 1080 if is_landscape else 1920
+    font_size = 46 if is_landscape else 56
+    margin_v = 110 if is_landscape else 390
+
     header = f"""[Script Info]
 Title: AI News Kinetic Subtitles
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_family},56,{ass_primary},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,1,0,1,4.5,2.5,2,80,80,390,1
+Style: Default,{font_family},{font_size},{ass_primary},&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,1,0,1,4.0,2.0,2,80,80,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

@@ -1,6 +1,7 @@
 from app.core.config import settings
 from app.core.log import logger
 from app.services.llm.base import LLMProviderAdapter
+from app.services.llm.claude_provider import ClaudeProvider
 from app.services.llm.gemini_provider import GeminiProvider
 from app.services.llm.openai_provider import OpenAIProvider
 
@@ -11,6 +12,9 @@ def get_llm_provider() -> LLMProviderAdapter:
     if provider_name == "gemini":
         logger.info(f"Using Gemini LLM Provider (Model: {settings.GEMINI_MODEL})")
         return GeminiProvider()
+    elif provider_name in ("claude", "anthropic"):
+        logger.info(f"Using Claude LLM Provider (Model: {settings.effective_claude_model})")
+        return ClaudeProvider()
     elif provider_name == "openai":
         logger.info(f"Using OpenAI LLM Provider (Model: {settings.OPENAI_MODEL})")
         return OpenAIProvider()

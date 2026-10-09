@@ -30,6 +30,7 @@ dependencies = [
     "feedparser>=6.0.14",
     "pillow>=12.3.0",
     "edge-tts>=7.2.8",
+    "anthropic>=1.12.1",
 ]
 
 [dependency-groups]

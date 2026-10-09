@@ -1,8 +1,11 @@
+import asyncio
 import hashlib
+import re
 import time
 import zoneinfo
 from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any
+from urllib.parse import urljoin
 import feedparser
 import httpx
 from app.core.config import settings
@@ -60,6 +63,23 @@ def is_published_today(dt: datetime | None, tz_name: str | None = None) -> bool:
     return dt_local.date() == now_local.date()
 
 
+def find_rss_autodiscovery_link(html_text: str, base_url: str) -> str | None:
+    """Scan HTML head for RSS or Atom autodiscovery link tags."""
+    head_match = re.search(r"<head[^>]*>(.*?)</head>", html_text, re.DOTALL | re.IGNORECASE)
+    search_space = head_match.group(1) if head_match else html_text[:6000]
+
+    link_matches = re.findall(r"<link[^>]+>", search_space, re.IGNORECASE)
+    for tag in link_matches:
+        tag_lower = tag.lower()
+        if "alternate" in tag_lower and any(
+            t in tag_lower for t in ["application/rss+xml", "application/atom+xml", "text/xml"]
+        ):
+            href_m = re.search(r'href=["\']([^"\']+)["\']', tag, re.IGNORECASE)
+            if href_m:
+                return urljoin(base_url, href_m.group(1))
+    return None
+
+
 async def fetch_rss_feed(
     feed_url: str,
     max_entries: int | None = None,
@@ -81,19 +101,78 @@ async def fetch_rss_feed(
         age_days = max_age_days or settings.RSS_MAX_AGE_DAYS
         cutoff = datetime.now(timezone.utc) - timedelta(days=age_days)
 
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/rss+xml, application/xml, text/xml, */*"}
-    try:
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-            resp = await client.get(feed_url, headers=headers)
-            resp.raise_for_status()
-            raw_xml = resp.text
-    except Exception as e:
-        logger.warning(f"HTTP fetch failed for RSS feed {feed_url}: {e}. Trying direct feedparser.")
-        raw_xml = feed_url
+    raw_xml: str | None = None
+    parsed = None
 
-    parsed = feedparser.parse(raw_xml)
+    logger.info(f"Connecting to RSS feed '{feed_url}'...")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=MODERN_BROWSER_HEADERS) as client:
+            resp = await client.get(feed_url)
+            resp.raise_for_status()
+
+            content_type = resp.headers.get("content-type", "").lower()
+            resp_text = resp.text
+
+            # Detect whether the response is an HTML webpage rather than RSS/Atom XML
+            is_html = (
+                "text/html" in content_type
+                or resp_text[:400].strip().lower().startswith("<!doctype html")
+                or resp_text[:400].strip().lower().startswith("<html")
+            )
+
+            if is_html:
+                logger.info(f"URL '{feed_url}' returned HTML. Checking for RSS autodiscovery <link>...")
+                discovered_url = find_rss_autodiscovery_link(resp_text, str(resp.url))
+
+                if discovered_url and discovered_url != feed_url:
+                    logger.info(f"Discovered RSS feed '{discovered_url}' in HTML head. Fetching discovered feed...")
+                    feed_resp = await client.get(discovered_url)
+                    feed_resp.raise_for_status()
+                    raw_xml = feed_resp.text
+                else:
+                    logger.warning(
+                        f"URL '{feed_url}' returned an HTML webpage (Content-Type: '{content_type}'), not an XML/RSS feed. "
+                        f"feedparser cannot extract RSS items from an HTML webpage. Please configure a valid RSS endpoint (e.g. /feed or .xml)."
+                    )
+                    return []
+            else:
+                raw_xml = resp_text
+
+    except Exception as e:
+        logger.warning(
+            f"HTTP fetch failed for RSS feed '{feed_url}': {e}. "
+            f"Attempting fallback via direct feedparser (with 15s timeout)..."
+        )
+        try:
+            logger.info(f"[Fallback] Direct feedparser connecting to '{feed_url}'...")
+            parsed = await asyncio.wait_for(
+                asyncio.to_thread(feedparser.parse, feed_url),
+                timeout=15.0,
+            )
+            entries_count = len(parsed.entries) if parsed and hasattr(parsed, "entries") else 0
+            bozo_status = getattr(parsed, "bozo", False)
+            http_status = getattr(parsed, "status", "N/A")
+            logger.info(
+                f"[Fallback] Direct feedparser completed for '{feed_url}': "
+                f"HTTP status={http_status}, entries_found={entries_count}, bozo={bozo_status}"
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"[Fallback] Direct feedparser timed out after 15s for '{feed_url}'. Skipping feed.")
+            return []
+        except Exception as parse_err:
+            logger.error(f"[Fallback] Direct feedparser encountered an error for '{feed_url}': {parse_err}")
+            return []
+
+    # If raw_xml was retrieved via httpx, parse it in a worker thread to keep the event loop responsive
+    if parsed is None:
+        if not raw_xml:
+            logger.error(f"No XML payload retrieved for feed '{feed_url}'.")
+            return []
+        parsed = await asyncio.to_thread(feedparser.parse, raw_xml)
+
     if parsed.bozo and not parsed.entries:
-        logger.error(f"Failed to parse RSS feed from {feed_url}: {parsed.bozo_exception}")
+        logger.error(f"Failed to parse RSS feed from '{feed_url}': {parsed.bozo_exception}")
         return []
 
     articles: list[dict[str, Any]] = []

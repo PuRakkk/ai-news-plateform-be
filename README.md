@@ -33,7 +33,7 @@ An automated intelligence and video production engine that scans breaking AI new
 | **Database Migrations** | Alembic |
 | **Cache & Job Queue** | Redis 7 + ARQ |
 | **Admin Dashboard** | Starlette-Admin |
-| **AI Models** | OpenAI (`gpt-4o-mini`) / Google Gemini (`gemini-2.5-flash`) |
+| **AI Models** | OpenAI (`gpt-4o-mini`) / Google Gemini (`gemini-2.5-flash`) / Anthropic Claude (`claude-3-5-sonnet-20241022`) |
 | **Video Engine** | FFmpeg + Pillow + EdgeTTS |
 
 ---
@@ -76,13 +76,18 @@ cp .env.example .env
 
 Open `.env` and configure your API keys:
 ```env
-# AI Model Selection (openai or gemini)
+# AI Model Selection (openai, gemini, or claude)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 
 # Or for Gemini:
 # LLM_PROVIDER=gemini
 # GEMINI_API_KEY=...
+
+# Or for Claude:
+# LLM_PROVIDER=claude
+# ANTHROPIC_API_KEY=sk-ant-...
+# ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
 ```
 
 ### Step 3: Start Database & Redis (Docker)

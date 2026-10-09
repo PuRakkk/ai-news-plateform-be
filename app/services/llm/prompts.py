@@ -28,9 +28,11 @@ def get_screening_prompt(
             f"- Target Industry / Sector: {industries or 'All Emerging AI & Enterprise Automation'}\n"
             f"- Priority Focus Keywords & Themes: {keywords or 'High utility technology'}\n"
             f"- Excluded / Irrelevant Topics: {excluded or 'None'}\n\n"
-            "INSTRUCTION: You must strictly evaluate each candidate against this client mandate. "
-            "Strongly prioritize and elevate articles matching the focus keywords and industry. "
-            "Deprioritize or exclude irrelevant articles, generic PR noise, or excluded topics.\n\n"
+            "EVALUATION INSTRUCTIONS:\n"
+            "1. Evaluate each candidate's relevance to the target industry, workforce skills, automation, operations, safety, or modern enterprise technology.\n"
+            "2. Strongly prioritize and elevate articles whose primary focus directly impacts the target industry and focus themes.\n"
+            "3. If stories directly matching the niche trade/industry are limited or absent in this candidate batch, you MUST select the top highest-impact enterprise technology, automation, or workforce innovation breakthroughs that hold strategic intelligence value for operators and business leaders.\n"
+            f"4. You MUST ALWAYS return between 3 and {top_k} candidates in the 'screened' list. NEVER return an empty screened list when input articles are provided.\n\n"
         )
 
     user_prompt = (
@@ -117,18 +119,20 @@ def get_scoring_prompt(
         f"{criteria_context}"
         f"ARTICLE TITLE: {title}\n"
         f"ARTICLE CONTENT: {full_text[:max_chars]}\n\n"
-        "Score the article on each of the four dimensions from 0.00 to 1.00:\n"
-        "1. actionability (0.0 to 1.0): Can leaders make concrete strategic, technical, or operational decisions?\n"
-        "2. economic_impact (0.0 to 1.0): Does it impact costs, market valuations, vendor ecosystems, or efficiency?\n"
-        "3. regulatory_impact (0.0 to 1.0): Does it involve legal compliance, copyright, risk, or government policy?\n"
-        "4. novelty (0.0 to 1.0): Is this a fundamental breakthrough or routine release?\n\n"
+        "Score the article on each dimension from 0.00 to 1.00:\n"
+        "1. client_relevance (0.0 to 1.0): Does this story directly impact the client's sector or provide critical strategic intelligence for business operations, workforce training, automation, or executive productivity? (0.8-1.0: direct core sector match; 0.5-0.7: workforce, operations, or technology breakthrough relevance; 0.1-0.4: low applicability).\n"
+        "2. actionability (0.0 to 1.0): Can leaders make concrete strategic, technical, or operational decisions?\n"
+        "3. economic_impact (0.0 to 1.0): Does it impact costs, market valuations, vendor ecosystems, or efficiency?\n"
+        "4. regulatory_impact (0.0 to 1.0): Does it involve legal compliance, copyright, risk, or government policy?\n"
+        "5. novelty (0.0 to 1.0): Is this a fundamental breakthrough or routine release?\n\n"
         "Respond ONLY with a JSON object in this schema:\n"
         "{\n"
+        '  "client_relevance": 0.0 to 1.0,\n'
         '  "actionability": 0.0 to 1.0,\n'
         '  "economic_impact": 0.0 to 1.0,\n'
         '  "regulatory_impact": 0.0 to 1.0,\n'
         '  "novelty": 0.0 to 1.0,\n'
-        '  "reasoning": "2-sentence strategic rationale for why this story matters to executives"\n'
+        '  "reasoning": "2-sentence strategic rationale explaining fit and impact for this client"\n'
         "}"
     )
     return SCORING_SYSTEM_PROMPT, user_prompt
@@ -139,8 +143,9 @@ def get_scoring_prompt(
 # ==============================================================================
 
 SCRIPTWRITING_SYSTEM_PROMPT = (
-    "You are an elite short-form executive scriptwriter for technology business leaders. "
-    "You transform complex AI news breakthroughs into authoritative, high-converting 60-90 second video scripts. "
+    "You are an elite short-form video scriptwriter and teleprompter copywriter. "
+    "You transform complex breakthroughs and verified news into authoritative, high-converting "
+    "60-90 second presenter video scripts delivered by a digital video avatar. "
     "Every factual claim must be strictly grounded in the provided article text. "
     "You must respond ONLY in strict, valid JSON matching the requested schema."
 )
@@ -153,11 +158,23 @@ def get_scriptwriting_prompt(
     topic_filter: dict[str, Any] | None = None,
     max_chars: int = 4000,
 ) -> tuple[str, str]:
-    """Build the system and user prompt for 5-beat grounded scriptwriting."""
-    persona_role = persona.get("persona_role", "AI Chief of Staff")
+    """Build the system and user prompt for 5-beat grounded scriptwriting tailored to the client profile."""
+    client_name = persona.get("client_name") or ""
+    persona_role = persona.get("persona_role", "Executive Presenter")
     tone_of_voice = persona.get("tone_of_voice", "Concise, analytical, authoritative")
-    target_audience = persona.get("target_audience", "Business owners, tech executives, and startup founders")
-    default_cta = persona.get("default_cta", "Follow for daily executive AI updates.")
+    target_audience = persona.get("target_audience", "Industry professionals, business owners, and operators")
+    default_cta = persona.get("default_cta", "Subscribe for daily industry updates.")
+
+    if client_name:
+        system_prompt = (
+            f"You are an elite video scriptwriter and teleprompter copywriter for {client_name}. "
+            "You transform verified industry news, policy announcements, and developments into engaging, "
+            "authoritative 60-90 second presenter video scripts delivered on camera by a digital video avatar. "
+            "Every factual claim must be strictly grounded in the provided article text. "
+            "You must respond ONLY in strict, valid JSON matching the requested schema."
+        )
+    else:
+        system_prompt = SCRIPTWRITING_SYSTEM_PROMPT
 
     filter_context = ""
     if topic_filter:
@@ -165,23 +182,31 @@ def get_scriptwriting_prompt(
         focus = topic_filter.get("focus_keywords", "[]")
         filter_context = f"\nClient Focus Areas: Industries={industries}, Keywords={focus}\n"
 
+    client_header = f"Client Organization: {client_name}\n" if client_name else ""
+
     user_prompt = (
-        f"You are writing a 60–90 second executive video briefing script as a {persona_role}.\n"
+        f"{client_header}"
+        f"You are writing a 60–90 second presenter video briefing script as: {persona_role}.\n"
         f"Tone of voice: {tone_of_voice}\n"
         f"Target audience: {target_audience}\n"
         f"Custom Call to Action: {default_cta}\n"
         f"{filter_context}\n"
         f"ARTICLE TITLE: {article_title}\n"
         f"ARTICLE FULL TEXT:\n{full_text[:max_chars]}\n\n"
-        "STRICT STRUCTURE REQUIREMENT: Exactly 5 beats totaling 60 to 90 seconds:\n"
-        "1. Beat 1 (HOOK, ~10s, 0-10s): Bold, disruptive opening statement stopping the scroll. Speaks directly to the target audience.\n"
-        "2. Beat 2 (CONTEXT, ~15s, 10-25s): Grounded background. What was the status quo or pain point before this breakthrough?\n"
-        "3. Beat 3 (CORE_SHIFT, ~25s, 25-50s): The technical or market breakthrough. The specific announcement, figures, benchmarks, or product launch.\n"
-        "4. Beat 4 (BUSINESS_IMPACT, ~20s, 50-70s): Economic, strategic, and competitive consequences. What does this mean for budgets, margins, and tech roadmaps?\n"
-        "5. Beat 5 (CTA, ~15s, 70-90s): Concrete strategic takeaway and the business owner's customized call to action.\n\n"
-        "RULES:\n"
-        "- Spoken text must sound natural for a teleprompter, direct and punchy.\n"
-        "- Do NOT hallucinate statistics or dates not in the article.\n"
+        "STRICT STRUCTURE REQUIREMENT: Exactly 5 progressive beats totaling 60 to 90 seconds:\n"
+        "1. Beat 1 (HOOK, ~10s, 0-10s): Open directly as the on-camera presenter (e.g. natural greeting, introducing identity/organization where fitting) with a bold, scroll-stopping hook speaking directly to the target audience.\n"
+        "2. Beat 2 (CONTEXT, ~15s, 10-25s): Grounded background. What is the current industry status quo, regulatory landscape, or operational context before this development?\n"
+        "3. Beat 3 (CORE_SHIFT, ~25s, 25-50s): The core development or announcement. Specific policy change, program update, figures, or breakthrough strictly grounded in the article.\n"
+        "4. Beat 4 (BUSINESS_IMPACT, ~20s, 50-70s): Practical workforce, operational, and industry impact. What does this mean on the ground for employers, workers, trainees, safety, or compliance?\n"
+        "5. Beat 5 (CTA, ~15s, 70-90s): Supportive wrap-up (reinforcing confidence and brand ethos) and the customized call to action.\n\n"
+        "PRESENTATION & TELEPROMPTER RULES (BROADCAST NEWS CADENCE):\n"
+        "- SPOKEN NEWS DELIVERY, NOT ESSAY READING: Write as a real television anchor speaking directly to the viewer. Never write dry, academic, or formal book prose.\n"
+        "- NATURAL CONTRACTIONS & CADENCE: Always use natural contractions ('we're', 'here's', 'it's', 'don't', 'you'll', 'they've'). Avoid stiff phrasing like 'do not', 'it is important to note', 'furthermore'.\n"
+        "- BREATHING & RHYTHMIC PUNCTUATION: Use em dashes ('—') for dramatic pause beats, commas for breathing pauses, and short clauses (6-12 words per breath). This forces the speech engine to pause and speak with natural human inflection instead of robotic reading.\n"
+        "- VERBAL SIGNPOSTS: Use conversational hooks to hold attention: 'Look at the numbers—', 'Here’s the real takeaway:', 'Why does this matter for your team?', 'Let’s break it down.'\n"
+        "- FIRST-PERSON PRESENTER PRESENCE: Spoken text is read by a digital presenter (HeyGen avatar) on camera: write in warm, authoritative first person ('I', 'we', 'our team').\n"
+        "- SEAMLESS FLOW: Connect each beat smoothly so all 5 beats sound like one seamless, high-energy executive broadcast.\n"
+        "- STRICT FACT GROUNDING: Every claim, statistic, and policy must come strictly from the provided article text—do NOT invent numbers or facts.\n"
         "- Visual directives should use camera cues: 'PRESENTER_CAMERA_A', 'PRESENTER_CAMERA_B_SPLIT', 'PRESENTER_CAMERA_A_PUNCH_IN', 'WHITEBOARD_GRAPHIC'.\n"
         "- Whiteboard directive: 1-sentence prompt for animated bullet points or diagram cues (or null).\n\n"
         "Respond ONLY with a JSON object in this schema:\n"
@@ -234,7 +259,7 @@ def get_scriptwriting_prompt(
         "  ]\n"
         "}"
     )
-    return SCRIPTWRITING_SYSTEM_PROMPT, user_prompt
+    return system_prompt, user_prompt
 
 
 CLAIM_AUDIT_SYSTEM_PROMPT = (
@@ -264,14 +289,21 @@ def get_claim_audit_prompt(
     )
 
     user_prompt = (
-        "You are an adversarial fact-checker. Extract every atomic factual assertion from the script beats below.\n"
-        "Atomic factual assertions include: metrics, percentage shifts, model names, pricing, dates, company actions, and claims.\n"
-        "Cross-check each claim against the SOURCE ARTICLE.\n\n"
+        "You are a rigorous factual accuracy auditor for executive video scripts.\n"
+        "Your task is to identify and audit hard, verifiable factual assertions made in the script beats against the source article.\n\n"
+        "WHAT COUNTS AS A FACTUAL ASSERTION (EXTRACT & AUDIT THESE):\n"
+        "- Specific metrics, dollar amounts, performance percentages, and benchmark numbers.\n"
+        "- Product names, model versions, feature announcements, and technical capabilities.\n"
+        "- Company actions, regulatory decisions/approvals, partnerships, funding rounds, and dates.\n\n"
+        "WHAT DOES NOT COUNT AS A FACTUAL ASSERTION (DO NOT EXTRACT THESE):\n"
+        "- Conversational hooks, audience call-outs, and calls to action (e.g. 'Follow for daily briefings').\n"
+        "- Presenter greetings, persona introductions, and brand statements (e.g. 'G\'day, I\'m Crystal from Major Training Group', 'Our team is here to support you'). These are presentation framing, NOT ungrounded external claims.\n"
+        "- Subjective presenter commentary, rhetorical transitions, or high-level framing (e.g. 'This is a significant milestone', 'Leaders should prepare', 'Here is why this matters'). These are presentation style, NOT ungrounded facts.\n\n"
         f"SCRIPT BEATS:\n{beats_json}\n\n"
         f"SOURCE ARTICLE FULL TEXT:\n{full_text[:max_chars]}\n\n"
         "VERIFICATION CRITERIA:\n"
-        "- If a claim is explicitly supported by the article, provide the verbatim source quote in 'source_verbatim_quote' and set 'is_grounded': true.\n"
-        "- If a claim is an unverified deduction, marketing exaggeration, or contradicted by the article, set 'is_grounded': false and 'source_verbatim_quote': null.\n"
+        "- If a factual claim is explicitly supported by the article, provide the verbatim source quote in 'source_verbatim_quote' and set 'is_grounded': true.\n"
+        "- If a factual claim is fabricated, contradictory, or unsupported by the text, set 'is_grounded': false and 'source_verbatim_quote': null.\n"
         "- Mention which paragraph/section in 'verified_citation'.\n\n"
         "Respond ONLY with a JSON object in this schema:\n"
         "{\n"

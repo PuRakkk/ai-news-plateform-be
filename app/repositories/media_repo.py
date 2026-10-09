@@ -46,7 +46,7 @@ class RenderedVideoRepository(BaseRepository[RenderedVideo]):
         thumbnail_url: str | None = None,
         audio_url: str | None = None,
         duration_sec: float = 0.0,
-        resolution: str = "1080x1920",
+        resolution: str = "1920x1080",
         file_size_bytes: int = 0,
         status: str = "ready",
         social_caption: str | None = None,

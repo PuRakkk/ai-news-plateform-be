@@ -67,14 +67,33 @@ class HeyGenVideoEngine(BaseVideoEngine):
             if (brand_kit and brand_kit.avatar_model_id)
             else "Wayne_20240711"
         )
-        selected_voice = voice_id or (brand_kit.voice_id if brand_kit else "en-US-ChristopherNeural")
         bg_hex = brand_kit.background_hex if brand_kit else "#0F172A"
+
+        voice_payload: dict[str, Any] = {
+            "type": "text",
+            "input_text": full_text,
+            "speed": 1.05,
+        }
+        # If an explicit HeyGen voice ID is provided (ignoring local Edge-TTS voices that end with 'Neural')
+        candidate_voice = voice_id or (brand_kit.voice_id if brand_kit else None)
+        if candidate_voice and not candidate_voice.endswith("Neural") and candidate_voice != "en-US-ChristopherNeural":
+            voice_payload["voice_id"] = candidate_voice
+        else:
+            voice_payload["voice_id"] = "f0f23413cc2c450394cbdafaba976fe4"  # Default Australian female for HeyGen
+            logger.info(
+                f"HeyGen: Using fallback Australian female voice '{voice_payload['voice_id']}' for avatar '{avatar_id}'."
+            )
 
         headers = {
             "X-Api-Key": self.api_key,
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        # Determine aspect ratio: 16:9 Landscape (1920x1080) or 9:16 Portrait (1080x1920)
+        is_landscape = settings.VIDEO_ASPECT_RATIO == "16:9"
+        render_width = 1920 if is_landscape else 1080
+        render_height = 1080 if is_landscape else 1920
+        resolution_str = f"{render_width}x{render_height}"
 
         payload: dict[str, Any] = {
             "video_inputs": [
@@ -84,11 +103,7 @@ class HeyGenVideoEngine(BaseVideoEngine):
                         "avatar_id": avatar_id,
                         "avatar_style": "normal",
                     },
-                    "voice": {
-                        "type": "text",
-                        "input_text": full_text,
-                        "voice_id": selected_voice,
-                    },
+                    "voice": voice_payload,
                     "background": {
                         "type": "color",
                         "value": bg_hex,
@@ -96,10 +111,10 @@ class HeyGenVideoEngine(BaseVideoEngine):
                 }
             ],
             "dimension": {
-                "width": 1080,
-                "height": 1920,
+                "width": render_width,
+                "height": render_height,
             },
-            "test": settings.is_development,
+            "test": getattr(settings, "HEYGEN_TEST_MODE", False),
         }
 
         try:
@@ -220,9 +235,13 @@ class HeyGenVideoEngine(BaseVideoEngine):
                     return VideoEngineResult(
                         video_path=output_path,
                         duration_sec=duration_sec,
-                        resolution="1080x1920",
+                        resolution=resolution_str,
                         engine_name="heygen",
-                        metadata={"video_id": video_id, "avatar_id": avatar_id},
+                        metadata={
+                            "video_id": video_id,
+                            "avatar_id": avatar_id,
+                            "aspect_ratio": settings.VIDEO_ASPECT_RATIO,
+                        },
                     )
 
         except Exception as exc:

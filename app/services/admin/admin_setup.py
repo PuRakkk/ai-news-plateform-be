@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import uuid
 from typing import Any, Optional
 from fastapi import FastAPI
@@ -13,6 +14,22 @@ from starlette_admin.exceptions import FormValidationError
 from starlette_admin.fields import URLField
 from starlette_admin.views import CustomView
 from sqlmodel import Session, select
+
+
+class TimezoneAwareModelView(ModelView):
+    """Base ModelView ensuring all naive datetimes submitted via admin forms receive UTC timezone."""
+
+    async def before_create(self, request: Request, data: dict[str, Any], obj: Any) -> None:
+        for k, v in list(data.items()):
+            if isinstance(v, datetime) and not v.tzinfo:
+                data[k] = v.replace(tzinfo=timezone.utc)
+        await super().before_create(request, data, obj)
+
+    async def before_edit(self, request: Request, data: dict[str, Any], obj: Any) -> None:
+        for k, v in list(data.items()):
+            if isinstance(v, datetime) and not v.tzinfo:
+                data[k] = v.replace(tzinfo=timezone.utc)
+        await super().before_edit(request, data, obj)
 
 from app.core.config import settings
 from app.core.database import engine, get_session
@@ -125,9 +142,11 @@ class DailyWinnerView(CustomView):
             )
 
 
-class ArticleAdminView(ModelView):
+class ArticleAdminView(TimezoneAwareModelView):
     fields = ["title", "client", "source", "status", "url", "summary", "full_text", "published_at", "created_at"]
     exclude_fields_from_list = ["full_text", "summary"]
+    exclude_fields_from_create = ["created_at"]
+    exclude_fields_from_edit = ["created_at"]
     searchable_fields = ["title", "summary"]
     sortable_fields = ["status", "created_at", "published_at"]
     fields_default_sort = ["status:desc", "created_at:desc"]
@@ -170,7 +189,7 @@ class ArticleAdminView(ModelView):
         return f"Script generation and fact-checking started in background for {len(article_ids)} article(s)! Refresh the Scripts tab shortly."
 
 
-class ArticleScoreAdminView(ModelView):
+class ArticleScoreAdminView(TimezoneAwareModelView):
     fields = [
         "article",
         "composite_score",
@@ -182,12 +201,14 @@ class ArticleScoreAdminView(ModelView):
         "reasoning",
         "scored_at",
     ]
+    exclude_fields_from_create = ["scored_at"]
+    exclude_fields_from_edit = ["scored_at"]
     sortable_fields = ["composite_score", "is_selected", "scored_at"]
     fields_default_sort = ["is_selected:desc", "composite_score:desc"]
     page_size = 25
 
 
-class ArticleVerificationAdminView(ModelView):
+class ArticleVerificationAdminView(TimezoneAwareModelView):
     fields = [
         "article",
         "is_verified",
@@ -197,26 +218,30 @@ class ArticleVerificationAdminView(ModelView):
         "corroboration_notes",
         "checked_at",
     ]
+    exclude_fields_from_create = ["checked_at"]
+    exclude_fields_from_edit = ["checked_at"]
     sortable_fields = ["is_verified", "agreement_score", "checked_at"]
     fields_default_sort = ["is_verified:desc", "agreement_score:desc"]
     page_size = 25
 
 
-class ClientProfileAdminView(ModelView):
+class ClientProfileAdminView(TimezoneAwareModelView):
     fields = ["name", "slug", "is_active", "created_at", "updated_at"]
+    exclude_fields_from_create = ["created_at", "updated_at"]
+    exclude_fields_from_edit = ["created_at", "updated_at"]
     searchable_fields = ["name", "slug"]
     sortable_fields = ["name", "is_active", "created_at"]
     fields_default_sort = ["created_at:desc"]
     page_size = 25
 
 
-class ClientPersonaAdminView(ModelView):
+class ClientPersonaAdminView(TimezoneAwareModelView):
     fields = ["client", "persona_role", "tone_of_voice", "target_audience", "default_cta"]
     searchable_fields = ["persona_role", "tone_of_voice", "target_audience"]
     page_size = 25
 
 
-class ClientTopicFilterAdminView(ModelView):
+class ClientTopicFilterAdminView(TimezoneAwareModelView):
     fields = [
         "client",
         "industries",
@@ -230,7 +255,7 @@ class ClientTopicFilterAdminView(ModelView):
     page_size = 25
 
 
-class ScriptAdminView(ModelView):
+class ScriptAdminView(TimezoneAwareModelView):
     fields = [
         "title",
         "article",
@@ -241,6 +266,8 @@ class ScriptAdminView(ModelView):
         "status",
         "created_at",
     ]
+    exclude_fields_from_create = ["created_at"]
+    exclude_fields_from_edit = ["created_at"]
     searchable_fields = ["title", "persona_role", "status"]
     sortable_fields = ["status", "created_at", "total_estimated_duration_sec"]
     fields_default_sort = ["created_at:desc"]
@@ -296,7 +323,7 @@ class ScriptAdminView(ModelView):
         return f"Video rendering started in background for {len(pks)} script(s)! The Admin UI will not freeze. Check the 'Rendered Videos' tab in ~1 minute."
 
 
-class ScriptBeatAdminView(ModelView):
+class ScriptBeatAdminView(TimezoneAwareModelView):
     fields = [
         "script",
         "beat_index",
@@ -312,7 +339,7 @@ class ScriptBeatAdminView(ModelView):
     page_size = 25
 
 
-class ScriptClaimAuditAdminView(ModelView):
+class ScriptClaimAuditAdminView(TimezoneAwareModelView):
     fields = [
         "script",
         "beat_index",
@@ -328,12 +355,13 @@ class ScriptClaimAuditAdminView(ModelView):
     page_size = 25
 
 
-class ClientBrandKitAdminView(ModelView):
+class ClientBrandKitAdminView(TimezoneAwareModelView):
     fields = [
         "client",
+        "avatar_engine",
+        "avatar_model_id",
         "voice_engine",
         "voice_id",
-        "avatar_engine",
         "primary_hex",
         "accent_hex",
         "subtitle_highlight_hex",
@@ -343,12 +371,15 @@ class ClientBrandKitAdminView(ModelView):
         "intro_bumper_url",
         "outro_bumper_url",
         "created_at",
+        "updated_at",
     ]
-    searchable_fields = ["voice_id", "font_family"]
+    exclude_fields_from_create = ["created_at", "updated_at"]
+    exclude_fields_from_edit = ["created_at", "updated_at"]
+    searchable_fields = ["avatar_model_id", "voice_id", "font_family"]
     page_size = 25
 
 
-class RenderedVideoAdminView(ModelView):
+class RenderedVideoAdminView(TimezoneAwareModelView):
     def can_create(self, request: Request) -> bool:
         return False
 
@@ -364,6 +395,7 @@ class RenderedVideoAdminView(ModelView):
         "social_caption",
         "created_at",
     ]
+    exclude_fields_from_edit = ["created_at"]
     searchable_fields = ["status", "social_caption"]
     sortable_fields = ["status", "created_at", "duration_sec"]
     fields_default_sort = ["created_at:desc"]
@@ -385,7 +417,7 @@ def setup_admin(app: FastAPI) -> Admin:
     admin.add_view(ArticleAdminView(Article, icon="fa fa-newspaper", label="Articles"))
     admin.add_view(ArticleVerificationAdminView(ArticleVerification, icon="fa fa-check-double", label="Verifications"))
     admin.add_view(ArticleScoreAdminView(ArticleScore, icon="fa fa-star", label="Scores"))
-    admin.add_view(ModelView(NewsSource, icon="fa fa-rss", label="News Sources"))
+    admin.add_view(TimezoneAwareModelView(NewsSource, icon="fa fa-rss", label="News Sources"))
     admin.add_view(ClientProfileAdminView(ClientProfile, icon="fa fa-building", label="Clients"))
     admin.add_view(ClientPersonaAdminView(ClientPersona, icon="fa fa-user-tie", label="Personas"))
     admin.add_view(ClientTopicFilterAdminView(ClientTopicFilter, icon="fa fa-filter", label="Topic Filters"))

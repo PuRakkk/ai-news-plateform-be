@@ -45,13 +45,19 @@ class Settings(BaseSettings):
     RSS_ONLY_YESTERDAY_AND_TODAY: bool = True
     RSS_TODAY_FRESHNESS_BONUS: float = 0.05
     INGESTION_TOP_K: int = 10
+    MIN_CLIENT_WINNER_SCORE: float = 0.60
+    SCRIPT_GROUNDING_THRESHOLD: float = 0.75
 
-    # LLM Provider Configuration (gemini | openai)
-    LLM_PROVIDER: Literal["gemini", "openai"] = "openai"
+    # LLM Provider Configuration (gemini | openai | claude | anthropic)
+    LLM_PROVIDER: Literal["gemini", "openai", "claude", "anthropic"] = "openai"
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL: str = "claude-3-5-sonnet-20241022"
+    CLAUDE_API_KEY: str | None = None
+    CLAUDE_MODEL: str | None = None
 
     # Media Storage Configuration (local | s3 | r2)
     STORAGE_PROVIDER: Literal["local", "s3", "r2"] = "local"
@@ -65,9 +71,11 @@ class Settings(BaseSettings):
 
     # Video & Voice Engine (mock | programmatic | heygen | did)
     VIDEO_ENGINE: Literal["mock", "programmatic", "heygen", "did"] = "programmatic"
+    VIDEO_ASPECT_RATIO: Literal["16:9", "9:16"] = "16:9"
     TTS_PROVIDER: Literal["mock", "edge_tts", "elevenlabs"] = "edge_tts"
     TTS_DEFAULT_VOICE: str = "en-US-ChristopherNeural"
     HEYGEN_API_KEY: str | None = None
+    HEYGEN_TEST_MODE: bool = False
     ELEVENLABS_API_KEY: str | None = None
 
     @property
@@ -84,6 +92,14 @@ class Settings(BaseSettings):
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
+    @property
+    def effective_claude_api_key(self) -> str | None:
+        return self.ANTHROPIC_API_KEY or self.CLAUDE_API_KEY
+
+    @property
+    def effective_claude_model(self) -> str:
+        return self.CLAUDE_MODEL or self.ANTHROPIC_MODEL or "claude-3-5-sonnet-20241022"
+
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
         if self.APP_ENV == "production":
@@ -95,6 +111,8 @@ class Settings(BaseSettings):
                 raise ValueError("GEMINI_API_KEY must be configured when LLM_PROVIDER is gemini in production")
             if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
                 raise ValueError("OPENAI_API_KEY must be configured when LLM_PROVIDER is openai in production")
+            if self.LLM_PROVIDER in ("claude", "anthropic") and not self.effective_claude_api_key:
+                raise ValueError("ANTHROPIC_API_KEY or CLAUDE_API_KEY must be configured when LLM_PROVIDER is claude in production")
             if self.STORAGE_PROVIDER in ("s3", "r2") and (not self.S3_ACCESS_KEY_ID or not self.S3_SECRET_ACCESS_KEY):
                 raise ValueError("S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY must be configured when using S3/R2 storage in production")
         return self

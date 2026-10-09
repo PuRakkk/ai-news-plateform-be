@@ -182,6 +182,7 @@ class VideoAssemblyService:
                     source_feed=source_feed,
                     brand_colors=brand_colors,
                     font_family=font_family,
+                    aspect_ratio=settings.VIDEO_ASPECT_RATIO,
                 )
                 t_path = td / "thumbnail.png"
                 thumb_card.save(t_path, format="PNG")

@@ -53,42 +53,6 @@ DEFAULT_SOURCES: list[dict[str, str | int]] = [
         "feed_type": "rss",
         "trust_tier": 1,
     },
-    {
-        "name": "Google AI Blog",
-        "feed_url": "https://blog.google/technology/ai/rss/",
-        "feed_type": "rss",
-        "trust_tier": 1,
-    },
-    {
-        "name": "NVIDIA Blog",
-        "feed_url": "https://blogs.nvidia.com/feed/",
-        "feed_type": "rss",
-        "trust_tier": 1,
-    },
-    {
-        "name": "AWS Machine Learning Blog",
-        "feed_url": "https://aws.amazon.com/blogs/machine-learning/feed/",
-        "feed_type": "rss",
-        "trust_tier": 1,
-    },
-    {
-        "name": "Hugging Face Blog",
-        "feed_url": "https://huggingface.co/blog/feed.xml",
-        "feed_type": "rss",
-        "trust_tier": 1,
-    },
-    {
-        "name": "MarkTechPost",
-        "feed_url": "https://www.marktechpost.com/feed/",
-        "feed_type": "rss",
-        "trust_tier": 1,
-    },
-    {
-        "name": "SiliconANGLE AI",
-        "feed_url": "https://siliconangle.com/category/ai/feed/",
-        "feed_type": "rss",
-        "trust_tier": 1,
-    },
 ]
 
 

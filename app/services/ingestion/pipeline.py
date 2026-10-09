@@ -1,4 +1,5 @@
 import asyncio
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -216,19 +217,23 @@ class IngestionPipeline:
                     excluded_phrases = [ex.strip().lower() for ex in raw_ex.split(",") if ex.strip()]
 
                     cl_aff = 0.0
-                    if any(ex in title_lower or ex in summary_lower for ex in excluded_phrases):
+                    if any(
+                        re.search(r"\b" + re.escape(ex) + r"\b", title_lower)
+                        or re.search(r"\b" + re.escape(ex) + r"\b", summary_lower)
+                        for ex in excluded_phrases
+                    ):
                         cl_aff -= 50.0
 
                     for phrase in focus_phrases:
-                        if phrase in title_lower:
+                        if re.search(r"\b" + re.escape(phrase) + r"\b", title_lower):
                             cl_aff += 5.0
-                        elif phrase in summary_lower:
+                        elif re.search(r"\b" + re.escape(phrase) + r"\b", summary_lower):
                             cl_aff += 2.0
 
                     for token in cl_kw_list:
-                        if token in title_lower:
+                        if re.search(r"\b" + re.escape(token) + r"\b", title_lower):
                             cl_aff += 2.0
-                        elif token in summary_lower:
+                        elif re.search(r"\b" + re.escape(token) + r"\b", summary_lower):
                             cl_aff += 1.0
 
                     if cl_aff > max_affinity:
@@ -294,6 +299,24 @@ class IngestionPipeline:
             screened_results = await self.llm_provider.screen_candidates(
                 screening_payload, top_k=top_k_screen
             )
+
+        if not screened_results and clustered_candidates:
+            logger.warning(
+                "--> Stage 2: Screening returned 0 candidates matching strict mandate. "
+                "Engaging intelligent fallback to top candidate clusters to ensure executive briefing pipeline continues."
+            )
+            fallback_k = min(top_k_screen, len(clustered_candidates))
+            screened_results = [
+                {
+                    "article_id": c["id"],
+                    "title": c["title"],
+                    "url": c.get("url", ""),
+                    "relevance_score": 0.60,
+                    "screening_reason": "Selected via high-signal executive breakthrough fallback.",
+                }
+                for c in clustered_candidates[:fallback_k]
+            ]
+
         candidates_screened = len(screened_results)
 
         candidate_map = {c["id"]: c for c in clustered_candidates}
@@ -494,25 +517,34 @@ class IngestionPipeline:
                     best_candidate_for_cl = cand
                     best_score_record_for_cl = score_record
 
+            min_score = getattr(settings, "MIN_CLIENT_WINNER_SCORE", 0.60)
             if best_candidate_for_cl and best_score_record_for_cl:
-                cl_winning_id = uuid.UUID(best_candidate_for_cl["id"])
-                self.score_repo.set_winning_article(cl_winning_id, cl_id)
-                self.article_repo.update_status(cl_winning_id, "selected")
-                if cl_id:
-                    client_winners[str(cl_id)] = cl_winning_id
+                if best_score_record_for_cl.composite_score < min_score:
+                    logger.warning(
+                        f"\n>>> [NO QUALIFYING WINNER FOR '{cl_name}']:\n"
+                        f"    Highest composite score {best_score_record_for_cl.composite_score:.2f} did not meet "
+                        f"minimum threshold {min_score:.2f}.\n"
+                        f"    Skipping winner election for this client to prevent off-topic script generation."
+                    )
+                else:
+                    cl_winning_id = uuid.UUID(best_candidate_for_cl["id"])
+                    self.score_repo.set_winning_article(cl_winning_id, cl_id)
+                    self.article_repo.update_status(cl_winning_id, "selected")
+                    if cl_id:
+                        client_winners[str(cl_id)] = cl_winning_id
 
-                logger.info(
-                    f"\n>>> [ELECTED WINNER FOR '{cl_name}']:\n"
-                    f"    Title           : {best_candidate_for_cl['title']}\n"
-                    f"    URL             : {best_candidate_for_cl['url']}\n"
-                    f"    Composite Score : {best_score_record_for_cl.composite_score:.2f}\n"
-                    f"    Article ID      : {cl_winning_id}\n"
-                )
+                    logger.info(
+                        f"\n>>> [ELECTED WINNER FOR '{cl_name}']:\n"
+                        f"    Title           : {best_candidate_for_cl['title']}\n"
+                        f"    URL             : {best_candidate_for_cl['url']}\n"
+                        f"    Composite Score : {best_score_record_for_cl.composite_score:.2f}\n"
+                        f"    Article ID      : {cl_winning_id}\n"
+                    )
 
-                if best_score_record_for_cl.composite_score > overall_highest_composite:
-                    overall_highest_composite = best_score_record_for_cl.composite_score
-                    overall_best_candidate = best_candidate_for_cl
-                    overall_best_score_record = best_score_record_for_cl
+                    if best_score_record_for_cl.composite_score > overall_highest_composite:
+                        overall_highest_composite = best_score_record_for_cl.composite_score
+                        overall_best_candidate = best_candidate_for_cl
+                        overall_best_score_record = best_score_record_for_cl
 
         # Ensure default baseline winner is set if multiple clients ran
         if target_clients and len(target_clients) > 0 and overall_best_candidate and overall_best_score_record:

@@ -5,7 +5,7 @@ from starlette.testclient import TestClient
 from sqlmodel import Session
 
 from app.core.database import engine
-from app.models.news import Article, NewsSource
+from app.models.news import Article, ArticleScore, ArticleVerification, NewsSource
 from app.repositories.news_repo import (
     ArticleRepository,
     ArticleScoreRepository,
@@ -442,4 +442,125 @@ async def test_search_external_secondary_source_fallback() -> None:
         assert res is not None
         assert "reuters.com" in res["url"]
         assert res["source_name"] == "Reuters"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_filtering_and_minimum_quality_gate() -> None:
+    """Verify that off-topic articles scoring below 0.60 are rejected by the quality gate."""
+    from app.models.client import ClientProfile, ClientTopicFilter
+    from app.repositories.client_repo import ClientProfileRepository
+
+    with Session(engine) as session:
+        client_repo = ClientProfileRepository(session)
+        art_repo = ArticleRepository(session)
+        score_repo = ArticleScoreRepository(session)
+
+        # 1. Create Health Client
+        cl_health = ClientProfile(name="Aetheria Health", slug=f"health-gate-{uuid.uuid4().hex[:6]}")
+        session.add(cl_health)
+        session.commit()
+        session.refresh(cl_health)
+
+        tf = ClientTopicFilter(
+            client_id=cl_health.id,
+            industries="Healthcare, Clinical Medicine",
+            focus_keywords="clinical, diagnosis, hospital, doctor, patients, fda",
+            excluded_keywords="crypto, gaming",
+        )
+        session.add(tf)
+        session.commit()
+
+        # 2. Add an off-topic tech commerce article
+        art_url = f"https://techcrunch.com/agent-commerce-{uuid.uuid4().hex[:6]}"
+        off_topic_art = Article(
+            url=art_url,
+            title="Meta teams up with Bret Taylor’s Sierra Technologies on new standards for AI agent commerce",
+            summary="New conversational AI agent protocol for retail and customer transactions.",
+            content_hash=compute_article_hash(art_url, "Meta teams up with Bret Taylor’s Sierra"),
+            status="pending",
+        )
+        off_topic_art, _ = art_repo.create_if_not_exists(off_topic_art)
+
+        # 3. Mock LLM that rates the off-topic article with low composite (0.35) for Health
+        class LowRelevanceMockLLM(MockLLMProvider):
+            async def score_utility(
+                self,
+                title: str,
+                full_text: str,
+                profile_criteria: dict[str, Any] | None = None,
+            ) -> dict[str, Any]:
+                return {
+                    "composite_score": 0.35,
+                    "actionability": 0.30,
+                    "economic_impact": 0.30,
+                    "regulatory_impact": 0.20,
+                    "novelty": 0.50,
+                    "client_relevance": 0.10,
+                    "reasoning": "Off-topic consumer commerce story; zero application to clinical medicine.",
+                }
+
+        pipeline = IngestionPipeline(session, llm_provider=LowRelevanceMockLLM())
+        pipeline.source_repo.get_active_sources = lambda: []  # type: ignore[assignment]
+
+        try:
+            with patch("app.services.ingestion.pipeline.extract_article_text", return_value="Detailed verification text."):
+                result = await pipeline.run()
+
+            # 4. Verify quality gate rejected electing a winner for Health Client!
+            assert str(cl_health.id) not in result.client_winners
+            win_rec = score_repo.get_winning_article(client_id=cl_health.id)
+            assert win_rec is None
+        finally:
+            with Session(engine) as cleanup_session:
+                from sqlmodel import delete
+                cleanup_session.exec(delete(ArticleScore).where(ArticleScore.article_id == off_topic_art.id))
+                cleanup_session.exec(delete(ArticleScore).where(ArticleScore.client_id == cl_health.id))
+                cleanup_session.exec(delete(ArticleVerification).where(ArticleVerification.article_id == off_topic_art.id))
+                cleanup_session.exec(delete(Article).where(Article.id == off_topic_art.id))
+                cleanup_session.exec(delete(ClientTopicFilter).where(ClientTopicFilter.client_id == cl_health.id))
+                cleanup_session.exec(delete(ClientProfile).where(ClientProfile.id == cl_health.id))
+                cleanup_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_fetch_rss_feed_html_detection_and_fallback() -> None:
+    """Verify that fetch_rss_feed gracefully detects HTML pages and handles direct feedparser fallback."""
+    from unittest.mock import MagicMock, patch
+    from app.services.ingestion.rss_fetcher import fetch_rss_feed
+
+    # 1. Test HTML webpage detection without RSS links
+    mock_html_resp = MagicMock()
+    mock_html_resp.headers = {"content-type": "text/html; charset=utf-8"}
+    mock_html_resp.text = "<!DOCTYPE html><html><head><title>News</title></head><body><h1>Not RSS</h1></body></html>"
+    mock_html_resp.url = "https://example.gov.au/news"
+    mock_html_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient.get", return_value=mock_html_resp):
+        items = await fetch_rss_feed("https://example.gov.au/news", only_yesterday_and_today=False)
+        assert items == []
+
+    # 2. Test valid XML RSS feed parsing
+    mock_xml = """<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0">
+      <channel>
+        <title>Transport News</title>
+        <item>
+          <title>Heavy Vehicle Apprenticeship Expansion</title>
+          <link>https://example.com/hv-apprenticeship</link>
+          <description>New training incentives announced.</description>
+        </item>
+      </channel>
+    </rss>"""
+    mock_xml_resp = MagicMock()
+    mock_xml_resp.headers = {"content-type": "application/rss+xml"}
+    mock_xml_resp.text = mock_xml
+    mock_xml_resp.url = "https://example.com/feed"
+    mock_xml_resp.raise_for_status = MagicMock()
+
+    with patch("httpx.AsyncClient.get", return_value=mock_xml_resp):
+        items = await fetch_rss_feed("https://example.com/feed", only_yesterday_and_today=False)
+        assert len(items) == 1
+        assert items[0]["title"] == "Heavy Vehicle Apprenticeship Expansion"
+        assert items[0]["url"] == "https://example.com/hv-apprenticeship"
+
 

@@ -21,7 +21,7 @@ class RenderedVideo(SQLModel, table=True):
     thumbnail_url: str | None = Field(default=None)
     audio_url: str | None = Field(default=None)
     duration_sec: float = Field(default=0.0)
-    resolution: str = Field(default="1080x1920")
+    resolution: str = Field(default="1920x1080")
     file_size_bytes: int = Field(default=0)
     status: str = Field(default="ready", index=True)  # rendering, ready, failed
     error_message: str | None = Field(default=None)

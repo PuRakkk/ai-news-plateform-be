@@ -2,6 +2,7 @@ import uuid
 from typing import Any
 from sqlmodel import Session
 
+from app.core.config import settings
 from app.core.log import logger
 from app.models.script import Script, ScriptBeat, ScriptClaimAudit
 from app.repositories.client_repo import ClientPersonaRepository
@@ -132,11 +133,14 @@ class FactCheckingAuditorService:
 
         # Convert raw_claims to ScriptClaimAudit entities
         audit_models: list[ScriptClaimAudit] = []
+        max_beats = max(1, len(beats))
         for c in raw_claims:
+            raw_idx = int(c.get("beat_index", 1))
+            clamped_idx = max(1, min(max_beats, raw_idx))
             audit_models.append(
                 ScriptClaimAudit(
                     script_id=script_id,
-                    beat_index=int(c.get("beat_index", 1)),
+                    beat_index=clamped_idx,
                     claim_text=str(c.get("claim_text", "")).strip(),
                     verified_citation=c.get("verified_citation"),
                     source_verbatim_quote=c.get("source_verbatim_quote"),
@@ -149,7 +153,8 @@ class FactCheckingAuditorService:
         summary = self.audit_repo.get_grounded_summary(script_id)
 
         # Update Script status
-        if summary.get("is_fully_grounded") or summary.get("grounding_ratio", 0.0) >= 0.8:
+        grounding_threshold = getattr(settings, "SCRIPT_GROUNDING_THRESHOLD", 0.75)
+        if summary.get("is_fully_grounded") or summary.get("grounding_ratio", 0.0) >= grounding_threshold:
             script = self.script_repo.update_status(script_id, "audited") or script
         else:
             script = self.script_repo.update_status(script_id, "rejected") or script

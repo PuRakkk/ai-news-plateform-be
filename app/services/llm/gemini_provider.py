@@ -140,13 +140,22 @@ class GeminiProvider(LLMProviderAdapter):
             act = float(data.get("actionability", 0.5))
             eco = float(data.get("economic_impact", 0.5))
             reg = float(data.get("regulatory_impact", 0.3))
+            nov = float(data.get("novelty", 0.4))
+            client_rel = float(data.get("client_relevance", 1.0))
+
             # Apply dynamic client weights if specified, else default baseline weights
             weights = (profile_criteria or {}).get("weights", {})
             w_act = float(weights.get("actionability", 0.40))
             w_eco = float(weights.get("economic_impact", 0.30))
             w_reg = float(weights.get("regulatory_impact", 0.20))
             w_nov = float(weights.get("novelty", 0.10))
-            composite = round(w_act * act + w_eco * eco + w_reg * reg + w_nov * nov, 4)
+            base_composite = w_act * act + w_eco * eco + w_reg * reg + w_nov * nov
+
+            # Hybrid semantic dampening: if profile criteria exists and story is off-topic (< 0.60 client_relevance), heavily dampen composite score
+            if profile_criteria and client_rel < 0.60:
+                composite = round(base_composite * (client_rel ** 1.5), 4)
+            else:
+                composite = round(base_composite, 4)
 
             return {
                 "composite_score": composite,
@@ -154,6 +163,7 @@ class GeminiProvider(LLMProviderAdapter):
                 "economic_impact": round(eco, 3),
                 "regulatory_impact": round(reg, 3),
                 "novelty": round(nov, 3),
+                "client_relevance": round(client_rel, 3),
                 "reasoning": data.get("reasoning", "High utility technology development."),
             }
         except Exception as e:

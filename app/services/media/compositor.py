@@ -8,13 +8,16 @@ from typing import Sequence
 from app.core.log import logger
 
 
+from app.core.config import settings
+
+
 class VideoCompositorError(Exception):
     """Raised when FFmpeg video compositing fails."""
     pass
 
 
 class VideoCompositor:
-    """Composites visual cards, speech audio, subtitles, watermarks, and bumpers into vertical MP4 video."""
+    """Composites visual cards, speech audio, subtitles, watermarks, and bumpers into vertical or widescreen MP4 video."""
 
     def __init__(self, ffmpeg_bin: str = "ffmpeg") -> None:
         self.ffmpeg_bin = ffmpeg_bin
@@ -34,11 +37,15 @@ class VideoCompositor:
             return False
 
     def _normalize_clip(self, src: Path, dst: Path) -> None:
-        """Ensure video clip has uniform 1080x1920 resolution, 30fps, SAR 1:1, and stereo AAC audio."""
+        """Ensure video clip has uniform resolution (16:9 1920x1080 or 9:16 1080x1920), 30fps, SAR 1:1, and stereo AAC audio."""
         has_audio = self._has_audio_stream(src)
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        filter_v = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
+        is_landscape = getattr(settings, "VIDEO_ASPECT_RATIO", "16:9") == "16:9"
+        target_w = 1920 if is_landscape else 1080
+        target_h = 1080 if is_landscape else 1920
+
+        filter_v = f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30"
 
         if has_audio:
             cmd = [
@@ -148,8 +155,12 @@ class VideoCompositor:
             use_motion_clips = False
             animated_clips: list[Path] = []
 
+            is_landscape = getattr(settings, "VIDEO_ASPECT_RATIO", "16:9") == "16:9"
+            target_w = 1920 if is_landscape else 1080
+            target_h = 1080 if is_landscape else 1920
+
             if enable_camera_motion:
-                logger.info(f"Rendering {len(slides_with_durations)} animated camera zoom clips...")
+                logger.info(f"Rendering {len(slides_with_durations)} animated camera zoom clips ({target_w}x{target_h})...")
                 try:
                     for idx, (slide_file, duration) in enumerate(slides_with_durations):
                         dur = max(0.6, float(duration))
@@ -161,7 +172,7 @@ class VideoCompositor:
                             "-loop", "1",
                             "-i", str(slide_file),
                             "-t", f"{dur:.2f}",
-                            "-vf", f"zoompan=z='min(zoom+0.0006,1.035)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=30",
+                            "-vf", f"zoompan=z='min(zoom+0.0006,1.035)':d={total_frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={target_w}x{target_h}:fps=30",
                             "-c:v", "libx264",
                             "-preset", "ultrafast",
                             "-pix_fmt", "yuv420p",
@@ -230,9 +241,11 @@ class VideoCompositor:
             filter_parts: list[str] = []
 
             # 1. Live audio-reactive speaking visualizer underneath presenter frame
+            wave_w, wave_h = (460, 32) if is_landscape else (380, 36)
+            wave_x, wave_y = (1310, 760) if is_landscape else (350, 1080)
             filter_parts.append(
-                f"[1:a]showwaves=s=380x36:mode=line:colors=0x10B981@0.9:scale=cbrt:rate=30,format=rgba[wave]; "
-                f"{video_chain}[wave]overlay=350:1080:eval=frame[v_wave]"
+                f"[1:a]showwaves=s={wave_w}x{wave_h}:mode=line:colors=0x10B981@0.9:scale=cbrt:rate=30,format=rgba[wave]; "
+                f"{video_chain}[wave]overlay={wave_x}:{wave_y}:eval=frame[v_wave]"
             )
             video_chain = "[v_wave]"
 

@@ -1,6 +1,6 @@
 import json
 from typing import Any
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from app.core.config import settings
 from app.core.log import logger
 from app.services.llm.base import LLMProviderAdapter
@@ -14,15 +14,68 @@ from app.services.llm.prompts import (
 )
 
 
-class OpenAIProvider(LLMProviderAdapter):
-    """OpenAI implementation using gpt-4o-mini with structured JSON output."""
+def _extract_json(text: str) -> dict[str, Any] | list[Any]:
+    """Robustly extract and parse JSON payload from Claude completion text."""
+    cleaned = text.strip()
+    if cleaned.startswith("```json"):
+        cleaned = cleaned[7:].strip()
+    elif cleaned.startswith("```"):
+        cleaned = cleaned[3:].strip()
+    if cleaned.endswith("```"):
+        cleaned = cleaned[:-3].strip()
+
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    start_obj = text.find("{")
+    end_obj = text.rfind("}")
+    start_arr = text.find("[")
+    end_arr = text.rfind("]")
+
+    if start_obj != -1 and (start_arr == -1 or start_obj < start_arr):
+        if end_obj != -1 and end_obj > start_obj:
+            return json.loads(text[start_obj : end_obj + 1])
+    elif start_arr != -1:
+        if end_arr != -1 and end_arr > start_arr:
+            return json.loads(text[start_arr : end_arr + 1])
+
+    return json.loads(cleaned)
+
+
+class ClaudeProvider(LLMProviderAdapter):
+    """Anthropic Claude implementation using AsyncAnthropic SDK."""
 
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
-        self.api_key = api_key or settings.OPENAI_API_KEY
-        self.model = model or settings.OPENAI_MODEL or "gpt-4o-mini"
+        self.api_key = api_key or settings.effective_claude_api_key
+        self.model = model or settings.effective_claude_model or "claude-3-5-sonnet-20241022"
         if not self.api_key:
-            logger.warning("OPENAI_API_KEY is not configured in settings.")
-        self.client = AsyncOpenAI(api_key=self.api_key or "missing_key")
+            logger.warning("ANTHROPIC_API_KEY is not configured in settings.")
+        self.client = AsyncAnthropic(api_key=self.api_key or "missing_key")
+
+    async def _generate_text(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+    ) -> str:
+        """Helper to invoke Claude Messages API asynchronously."""
+        create_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": user_prompt},
+            ],
+        }
+        response = await self.client.messages.create(**create_kwargs)
+        content = ""
+        for block in response.content:
+            if getattr(block, "type", "") == "text" or hasattr(block, "text"):
+                content += getattr(block, "text", "")
+        return content
 
     async def screen_candidates(
         self,
@@ -41,23 +94,19 @@ class OpenAIProvider(LLMProviderAdapter):
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            content = await self._generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.2,
+                max_tokens=4096,
             )
-            content = response.choices[0].message.content or "{}"
-            data = json.loads(content)
+            data = _extract_json(content)
             screened: list[dict[str, Any]] = data.get("screened", [])
             # Sort by relevance_score descending
             screened.sort(key=lambda x: float(x.get("relevance_score", 0.0)), reverse=True)
             return screened[:top_k]
         except Exception as e:
-            logger.error(f"OpenAI screening failed: {e}")
+            logger.error(f"Claude screening failed: {e}")
             # Fallback: return top_k candidates with basic scoring
             return [
                 {
@@ -65,7 +114,7 @@ class OpenAIProvider(LLMProviderAdapter):
                     "title": str(c.get("title", "")),
                     "url": str(c.get("url", "")),
                     "relevance_score": 0.5,
-                    "screening_reason": "Fallback screening due to LLM provider error.",
+                    "screening_reason": "Fallback screening due to Claude provider error.",
                 }
                 for c in candidates[:top_k]
             ]
@@ -86,17 +135,13 @@ class OpenAIProvider(LLMProviderAdapter):
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            content = await self._generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.1,
+                max_tokens=2048,
             )
-            content = response.choices[0].message.content or "{}"
-            data = json.loads(content)
+            data = _extract_json(content)
             score = float(data.get("agreement_score", 0.0))
             is_verified = bool(score >= 0.75)
             return {
@@ -105,7 +150,7 @@ class OpenAIProvider(LLMProviderAdapter):
                 "corroboration_notes": data.get("corroboration_notes", "Verified via dual-source cross-check."),
             }
         except Exception as e:
-            logger.error(f"OpenAI verification failed: {e}")
+            logger.error(f"Claude verification failed: {e}")
             return {
                 "agreement_score": 0.0,
                 "is_verified": False,
@@ -126,17 +171,13 @@ class OpenAIProvider(LLMProviderAdapter):
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            content = await self._generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.2,
+                max_tokens=2048,
             )
-            content = response.choices[0].message.content or "{}"
-            data = json.loads(content)
+            data = _extract_json(content)
 
             act = float(data.get("actionability", 0.5))
             eco = float(data.get("economic_impact", 0.5))
@@ -168,14 +209,14 @@ class OpenAIProvider(LLMProviderAdapter):
                 "reasoning": data.get("reasoning", "High utility technology development."),
             }
         except Exception as e:
-            logger.error(f"OpenAI utility scoring failed: {e}")
+            logger.error(f"Claude utility scoring failed: {e}")
             return {
                 "composite_score": 0.5,
                 "actionability": 0.5,
                 "economic_impact": 0.5,
                 "regulatory_impact": 0.5,
                 "novelty": 0.5,
-                "reasoning": f"Fallback scoring due to LLM error: {e}",
+                "reasoning": f"Fallback scoring due to Claude error: {e}",
             }
 
     async def generate_script(
@@ -194,17 +235,13 @@ class OpenAIProvider(LLMProviderAdapter):
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            content = await self._generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.3,
+                max_tokens=4096,
             )
-            content = response.choices[0].message.content or "{}"
-            data = json.loads(content)
+            data = _extract_json(content)
             beats = data.get("beats", [])
             total_duration = sum(int(b.get("estimated_seconds", 15)) for b in beats)
             return {
@@ -215,7 +252,7 @@ class OpenAIProvider(LLMProviderAdapter):
                 "beats": beats,
             }
         except Exception as e:
-            logger.error(f"OpenAI script generation failed: {e}")
+            logger.error(f"Claude script generation failed: {e}")
             role = persona.get("persona_role", "AI Chief of Staff")
             cta = persona.get("default_cta", "Follow for daily executive AI updates.")
             return {
@@ -279,24 +316,20 @@ class OpenAIProvider(LLMProviderAdapter):
         system_prompt, user_prompt = get_claim_audit_prompt(beats=beats, full_text=full_text)
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            content = await self._generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.1,
+                max_tokens=4096,
             )
-            content = response.choices[0].message.content or "{}"
-            data = json.loads(content)
+            data = _extract_json(content)
             claims = data.get("claims", [])
             for c in claims:
                 c["is_grounded"] = bool(c.get("is_grounded", False))
                 c["beat_index"] = int(c.get("beat_index", 1))
             return claims
         except Exception as e:
-            logger.error(f"OpenAI claim audit failed: {e}")
+            logger.error(f"Claude claim audit failed: {e}")
             return []
 
     async def revise_script_beat(
@@ -315,17 +348,13 @@ class OpenAIProvider(LLMProviderAdapter):
         )
 
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+            content = await self._generate_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
                 temperature=0.2,
+                max_tokens=2048,
             )
-            content = response.choices[0].message.content or "{}"
-            data = json.loads(content)
+            data = _extract_json(content)
             return {
                 "spoken_script": data.get("spoken_script", beat.get("spoken_script", "")),
                 "visual_directive": data.get("visual_directive", beat.get("visual_directive", "PRESENTER_CAMERA_A")),
@@ -334,5 +363,9 @@ class OpenAIProvider(LLMProviderAdapter):
                 "revision_notes": data.get("revision_notes", "Automated revision to ground claims."),
             }
         except Exception as e:
-            logger.error(f"OpenAI beat revision failed: {e}")
+            logger.error(f"Claude beat revision failed: {e}")
             return beat
+
+
+# Alias for convenience
+AnthropicProvider = ClaudeProvider

@@ -157,6 +157,7 @@ class ProgrammaticVideoEngine(BaseVideoEngine):
                         watermark_logo_path=watermark_path,
                         avatar_image_path=avatar_path,
                         visual_directive=b.visual_directive,
+                        aspect_ratio=getattr(settings, "VIDEO_ASPECT_RATIO", "16:9"),
                     )
                     slide_path = td / f"beat_{b.beat_index}.png"
                     card_img.save(slide_path, format="PNG")
@@ -171,6 +172,7 @@ class ProgrammaticVideoEngine(BaseVideoEngine):
                         font_family=font_family,
                         highlight_hex=brand_colors["subtitle_highlight_hex"],
                         output_path=subtitles_path,
+                        aspect_ratio=getattr(settings, "VIDEO_ASPECT_RATIO", "16:9"),
                     )
 
                 # 6. Composite Master Video with Motion & Ambient Audio
@@ -194,15 +196,19 @@ class ProgrammaticVideoEngine(BaseVideoEngine):
 
             await asyncio.to_thread(_render_visuals_and_composite)
 
+            is_landscape = getattr(settings, "VIDEO_ASPECT_RATIO", "16:9") == "16:9"
+            target_res = "1920x1080" if is_landscape else "1080x1920"
+
             return VideoEngineResult(
                 video_path=output_path,
                 duration_sec=total_duration,
-                resolution="1080x1920",
+                resolution=target_res,
                 engine_name="programmatic",
                 metadata={
                     "tts_engine": tts_engine,
                     "voice_id": selected_voice,
                     "audio_url": audio_url,
+                    "aspect_ratio": getattr(settings, "VIDEO_ASPECT_RATIO", "16:9"),
                     "has_watermark": bool(watermark_path),
                     "has_intro": bool(intro_path),
                     "has_outro": bool(outro_path),

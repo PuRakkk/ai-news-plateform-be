@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 
+from app.core.config import settings
 from app.core.log import logger
 from app.models.client import ClientBrandKit, ClientPersona, ClientProfile
 from app.models.news import Article
@@ -30,12 +31,14 @@ class MockVideoEngine(BaseVideoEngine):
     ) -> VideoEngineResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         duration = max(3.0, len(beats) * 1.5)
+        is_landscape = getattr(settings, "VIDEO_ASPECT_RATIO", "16:9") == "16:9"
+        res_str = "1920x1080" if is_landscape else "1080x1920"
 
         cmd = [
             self.ffmpeg_bin,
             "-y",
             "-f", "lavfi",
-            "-i", f"color=c=0x0F172A:s=1080x1920:d={duration:.1f}",
+            "-i", f"color=c=0x0F172A:s={res_str}:d={duration:.1f}",
             "-f", "lavfi",
             "-i", f"sine=f=440:d={duration:.1f}",
             "-c:v", "libx264",
@@ -55,7 +58,7 @@ class MockVideoEngine(BaseVideoEngine):
         return VideoEngineResult(
             video_path=output_path,
             duration_sec=duration,
-            resolution="1080x1920",
+            resolution=res_str,
             engine_name="mock",
             metadata={"mock": True, "beats_count": len(beats)},
         )

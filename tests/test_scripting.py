@@ -560,7 +560,7 @@ def test_api_client_and_script_routes(client: TestClient) -> None:
     # 8. Clean up created client, script, and article in child-to-parent order
     with Session(engine) as cleanup_session:
         from sqlmodel import delete
-        from app.models.client import ClientProfile, ClientPersona, ClientTopicFilter
+        from app.models.client import ClientBrandKit, ClientPersona, ClientProfile, ClientTopicFilter
         c_uuid = uuid.UUID(client_id)
         a_uuid = uuid.UUID(article_id)
         s_uuid = uuid.UUID(script_id)
@@ -568,6 +568,51 @@ def test_api_client_and_script_routes(client: TestClient) -> None:
         cleanup_session.exec(delete(Script).where(Script.id == s_uuid))
         cleanup_session.exec(delete(ClientTopicFilter).where(ClientTopicFilter.client_id == c_uuid))
         cleanup_session.exec(delete(ClientPersona).where(ClientPersona.client_id == c_uuid))
+        cleanup_session.exec(delete(ClientBrandKit).where(ClientBrandKit.client_id == c_uuid))
         cleanup_session.exec(delete(ClientProfile).where(ClientProfile.id == c_uuid))
         cleanup_session.exec(delete(Article).where(Article.id == a_uuid))
         cleanup_session.commit()
+
+
+def test_get_scriptwriting_prompt_client_tailored() -> None:
+    """Verify that get_scriptwriting_prompt properly tailors system and user prompts to client profile and persona."""
+    from app.services.llm.prompts import get_scriptwriting_prompt
+
+    persona = {
+        "client_name": "Major Training Group",
+        "persona_role": "Crystal // Vocational Training & Apprenticeship Lead",
+        "tone_of_voice": "Warm, encouraging, plain English, authoritative, grounded Australian trade voice",
+        "target_audience": "Australian apprentices, trainees, and employers in transport and civil construction",
+        "default_cta": "Visit major.edu.au to get started.",
+    }
+    topic_filter = {
+        "industries": '["vocational_education_training", "transport_heavy_vehicle"]',
+        "focus_keywords": '["Certificate III in Driving Operations", "apprenticeships"]',
+    }
+
+    system_prompt, user_prompt = get_scriptwriting_prompt(
+        article_title="Major Training & Kinetic Traineeship Expansion",
+        full_text="Major Training Group partners with Kinetic to expand bus driver traineeships.",
+        persona=persona,
+        topic_filter=topic_filter,
+    )
+
+    # 1. System prompt is client-specific and mentions avatar delivery
+    assert "Major Training Group" in system_prompt
+    assert "digital video avatar" in system_prompt
+
+    # 2. User prompt contains client organization and persona identity
+    assert "Client Organization: Major Training Group" in user_prompt
+    assert "Crystal // Vocational Training & Apprenticeship Lead" in user_prompt
+    assert "grounded Australian trade voice" in user_prompt
+    assert "Visit major.edu.au" in user_prompt
+    assert "vocational_education_training" in user_prompt
+
+    # 3. User prompt contains teleprompter and 5-beat progressive structure
+    assert "Beat 1 (HOOK" in user_prompt
+    assert "Beat 2 (CONTEXT" in user_prompt
+    assert "Beat 3 (CORE_SHIFT" in user_prompt
+    assert "Beat 4 (BUSINESS_IMPACT" in user_prompt
+    assert "Beat 5 (CTA" in user_prompt
+    assert "HeyGen avatar" in user_prompt
+

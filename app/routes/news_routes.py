@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Sequence
@@ -37,22 +38,31 @@ _ingestion_state: dict[str, Any] = {
 
 
 async def run_background_ingestion(client_id: uuid.UUID | None = None) -> None:
-    """Non-blocking background runner triggered via FastAPI BackgroundTasks."""
+    """Non-blocking background runner. Runs pipeline in a dedicated worker thread to keep FastAPI event loop 100% responsive."""
     global _ingestion_state
     if _ingestion_state["is_running"]:
-        logger.warning("FastAPI BackgroundTasks: Ingestion is already in progress. Skipping concurrent run.")
+        logger.warning("Ingestion is already in progress. Skipping concurrent run.")
         return
 
     _ingestion_state["is_running"] = True
     _ingestion_state["error"] = None
+
+    def _worker_thread() -> Any:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(execute_daily_ingestion_pipeline(client_id=client_id))
+        finally:
+            loop.close()
+
     try:
-        logger.info(f"FastAPI BackgroundTasks: Starting ingestion (client_id={client_id})...")
-        result = await execute_daily_ingestion_pipeline(client_id=client_id)
+        logger.info(f"Background Ingestion: Starting in worker thread (client_id={client_id})...")
+        result = await asyncio.to_thread(_worker_thread)
         _ingestion_state["last_run_at"] = datetime.now(timezone.utc).isoformat()
         _ingestion_state["last_result"] = result.model_dump()
-        logger.info("FastAPI BackgroundTasks: Ingestion finished successfully.")
+        logger.info("Background Ingestion: Finished successfully.")
     except Exception as exc:
-        logger.error(f"FastAPI BackgroundTasks: Ingestion error: {exc}")
+        logger.error(f"Background Ingestion error: {exc}")
         _ingestion_state["error"] = str(exc)
     finally:
         _ingestion_state["is_running"] = False

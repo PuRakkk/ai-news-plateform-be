@@ -5,6 +5,8 @@ from sqlmodel import Session
 
 from app.core.deps import get_db
 from app.schemas.client import (
+    ClientBrandKitRead,
+    ClientBrandKitUpdate,
     ClientDetailRead,
     ClientPersonaRead,
     ClientPersonaUpdate,
@@ -74,6 +76,22 @@ def update_client_topic_filter(
 ) -> ClientTopicFilterRead:
     service = ClientService(session)
     updated = service.update_topic_filter(client_id, payload)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client with id {client_id} not found.",
+        )
+    return updated
+
+
+@router.put("/{client_id}/brand-kit", response_model=ClientBrandKitRead)
+def update_client_brand_kit(
+    client_id: uuid.UUID,
+    payload: ClientBrandKitUpdate,
+    session: Session = Depends(get_db),
+) -> ClientBrandKitRead:
+    service = ClientService(session)
+    updated = service.update_brand_kit(client_id, payload)
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

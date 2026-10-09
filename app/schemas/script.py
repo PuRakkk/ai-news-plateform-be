@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # --- Beat Schemas ---
 class ScriptBeatBase(BaseModel):
-    beat_index: int = Field(ge=1, le=5)
+    beat_index: int = Field(ge=1, le=10)
     beat_type: str  # HOOK, CONTEXT, CORE_SHIFT, BUSINESS_IMPACT, CTA
     spoken_script: str
     visual_directive: str
@@ -27,7 +27,7 @@ class ScriptBeatRead(ScriptBeatBase):
 
 # --- Claim Audit Schemas ---
 class ScriptClaimAuditBase(BaseModel):
-    beat_index: int = Field(ge=1, le=5)
+    beat_index: int = Field(ge=1, le=10)
     claim_text: str
     verified_citation: str | None = None
     source_verbatim_quote: str | None = None

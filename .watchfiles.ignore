@@ -1,0 +1,7 @@
+logs/
+logs/*
+media/
+media/*
+*.log
+.pytest_cache/
+.pytest_cache/*

@@ -49,8 +49,10 @@ class ScriptwriterService:
 
         persona = self.client_persona_repo.get_by_client_id(client_id)
         topic_filter = self.client_topic_repo.get_by_client_id(client_id)
+        client = self.client_profile_repo.get_by_id(client_id)
 
         persona_dict = {
+            "client_name": client.name if client else "",
             "persona_role": persona.persona_role if persona else DEFAULT_PERSONA["persona_role"],
             "tone_of_voice": persona.tone_of_voice if persona else DEFAULT_PERSONA["tone_of_voice"],
             "target_audience": persona.target_audience if persona else DEFAULT_PERSONA["target_audience"],

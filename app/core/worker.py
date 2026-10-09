@@ -41,21 +41,23 @@ async def run_daily_news_ingestion(ctx: dict[str, Any]) -> dict[str, Any]:
 
     with get_session() as session:
         client_repo = ClientProfileRepository(session)
-        score_repo = ArticleScoreRepository(session)
         active_clients = list(client_repo.get_active_clients())
 
     if active_clients:
         for cl in active_clients:
             cl_win_id = result.client_winners.get(str(cl.id))
             if not cl_win_id:
-                win_score = score_repo.get_winning_article(client_id=cl.id)
-                if win_score:
-                    cl_win_id = win_score.article_id
-                else:
-                    cl_win_id = result.winning_article_id
+                with get_session() as score_session:
+                    score_repo = ArticleScoreRepository(score_session)
+                    win_score = score_repo.get_winning_article(client_id=cl.id)
+                    if win_score:
+                        cl_win_id = win_score.article_id
 
             if not cl_win_id:
-                logger.warning(f"ARQ Worker: No winning article found for client {cl.name} (id={cl.id}).")
+                logger.warning(
+                    f"ARQ Worker: No qualifying winning article met relevance threshold for client '{cl.name}' (id={cl.id}). "
+                    f"Skipping script generation to prevent off-topic content."
+                )
                 continue
 
             logger.info(f"ARQ Worker: Auto-generating script for client: {cl.name} (winning article_id={cl_win_id})")
@@ -193,6 +195,9 @@ class EmbeddedWorkerManager:
                 fut.result(timeout=5)
             except Exception as exc:
                 logger.warning(f"Error while closing embedded worker: {exc}")
+
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=3.0)
 
         self.worker = None
         self.thread = None

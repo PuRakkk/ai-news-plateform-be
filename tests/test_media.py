@@ -83,6 +83,7 @@ def test_ass_subtitle_generation():
         TTSCue(start_sec=0.0, end_sec=2.0, text="Breaking AI News Update"),
         TTSCue(start_sec=2.0, end_sec=4.5, text="Multi-agent architectures change everything"),
     ]
+    # Default 16:9 widescreen
     ass_str = generate_ass_subtitles(
         cues=cues,
         font_family="Arial",
@@ -90,14 +91,23 @@ def test_ass_subtitle_generation():
         primary_hex="#FFFFFF",
     )
     assert "[Script Info]" in ass_str
-    assert "PlayResX: 1080" in ass_str
-    assert "PlayResY: 1920" in ass_str
+    assert "PlayResX: 1920" in ass_str
+    assert "PlayResY: 1080" in ass_str
     assert "Breaking AI News" in ass_str
     assert "Update" in ass_str
     assert "&H000B9EF5&" in ass_str  # ASS representation of #F59E0B
 
+    # Explicit 9:16 portrait
+    ass_916 = generate_ass_subtitles(
+        cues=cues,
+        aspect_ratio="9:16",
+    )
+    assert "PlayResX: 1080" in ass_916
+    assert "PlayResY: 1920" in ass_916
+
 
 def test_beat_card_canvas_rendering():
+    # Default 16:9 widescreen
     img = render_beat_card(
         beat_index=1,
         beat_type="HOOK",
@@ -112,8 +122,18 @@ def test_beat_card_canvas_rendering():
             "accent_hex": "#F59E0B",
         },
     )
-    assert img.size == (1080, 1920)
+    assert img.size == (1920, 1080)
     assert img.mode == "RGB"
+
+    # Explicit 9:16 portrait
+    img_916 = render_beat_card(
+        beat_index=1,
+        beat_type="HOOK",
+        headline="Anthropic Announces Claude 3.5 Sonnet",
+        content_text="Industry benchmark scores jump across coding and multimodal reasoning tasks.",
+        aspect_ratio="9:16",
+    )
+    assert img_916.size == (1080, 1920)
 
 
 def test_social_caption_generator(session: Session):
@@ -270,7 +290,7 @@ async def test_video_assembly_end_to_end(session: Session):
         assert video.script_id == script.id
         assert video.client_id == client.id
         assert video.status == "ready"
-        assert video.resolution == "1080x1920"
+        assert video.resolution == "1920x1080"
         assert video.duration_sec > 0
         assert video.file_size_bytes > 0
         assert video.video_url.startswith("http://testserver/media/rendered/")
@@ -480,7 +500,7 @@ async def test_video_assembly_with_mock_engine(session: Session):
     )
     assert rendered.status == "ready"
     assert rendered.duration_sec >= 1.0
-    assert rendered.resolution == "1080x1920"
+    assert rendered.resolution == "1920x1080"
     assert rendered.thumbnail_url is not None
 
     # Cleanup test records in child-to-parent order
